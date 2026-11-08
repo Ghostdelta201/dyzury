@@ -1,3 +1,4 @@
+yaml
 name: Zbuduj APK
 on:
   workflow_dispatch:
@@ -20,9 +21,16 @@ jobs:
       - name: Dodaj uprawnienia do alarmow i powiadomien
         run: |
           sed -i 's#</manifest>#<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n<uses-permission android:name="android.permission.USE_EXACT_ALARM"/>\n<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>\n<uses-permission android:name="android.permission.VIBRATE"/>\n</manifest>#' android/app/src/main/AndroidManifest.xml
+      - name: Wlasny dzwiek alarmu
+        run: |
+          if [ -f alarm.mp3 ]; then
+            mkdir -p android/app/src/main/res/raw
+            cp alarm.mp3 android/app/src/main/res/raw/alarm.mp3
+            echo "window.NATIVE_SOUND='alarm.mp3';" > www/native-sound.js
+          fi
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: dyzury-apk
+          name: dyzury-app
           path: android/app/build/outputs/apk/debug/app-debug.apk
