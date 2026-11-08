@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dyżury</title>
+<style>
+:root{--bg:#f3f5f7;--card:#fff;--tx:#14202b;--mut:#6b7885;--ln:#dde3e8;--acc:#0f4c75;
+--day:#1f6fd1;--night:#f2b705;--hol:#d12f2f}
+@media(prefers-color-scheme:dark){:root{--bg:#10161c;--card:#18212a;--tx:#e8eef3;--mut:#8b99a6;--ln:#2a3541;--acc:#5fb0e6}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:520px;margin:0 auto;padding:12px}
+h1{font-size:22px;margin:8px 0 12px}
+.next{background:var(--acc);color:#fff;border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.next b{font-size:18px;display:block;margin-bottom:2px}
+.bar{display:flex;align-items:center;justify-content:space-between;margin:8px 0}
+.bar button,.btn{border:1px solid var(--ln);background:var(--card);color:var(--tx);border-radius:10px;padding:8px 14px;font-size:15px}
+.btn.p{background:var(--acc);color:#fff;border-color:var(--acc)}
+.bar strong{font-size:17px;text-transform:capitalize}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.dow{font-size:12px;color:var(--mut);text-align:center;padding:4px 0}
+.day{aspect-ratio:1/1.1;background:var(--card);border:1px solid var(--ln);border-radius:9px;padding:3px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;font-size:13px;color:var(--tx)}
+.day.out{opacity:.35}.day.today{outline:2px solid var(--acc)}
+.day.hol>span:first-child{color:var(--hol);font-weight:700}.hl{font-size:13px;margin:10px 0 0;color:var(--mut);line-height:1.6}.hl b{color:var(--hol)}.tag{font-size:11px;font-weight:700;color:#fff;border-radius:5px;padding:2px 3px;width:100%;text-align:center}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.legend span{font-size:12px;display:flex;align-items:center;gap:4px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:14px;margin:12px 0}
+.card h2{font-size:16px;margin:0 0 10px}
+label{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;font-size:14px}
+input[type=time],input[type=number]{border:1px solid var(--ln);background:var(--bg);color:var(--tx);border-radius:8px;padding:6px 8px;font-size:15px;width:110px}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:5}
+.sheet.on{display:flex}
+.sheet>div{background:var(--card);width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.opts button{border:0;color:#fff;font-weight:700;border-radius:12px;padding:14px 6px;font-size:15px}
+.alarm{position:fixed;inset:0;background:#b3261e;color:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;z-index:9}
+.alarm.on{display:flex}.alarm h2{font-size:30px;margin:0 0 8px}.alarm p{font-size:19px;margin:0 0 24px}
+.alarm button{background:#fff;color:#b3261e;border:0;border-radius:14px;padding:16px 40px;font-size:18px;font-weight:700}
+small{color:var(--mut);display:block;margin-top:8px;line-height:1.4}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Dyżury</h1>
+  <div class="next" id="next">Brak zaplanowanych dyżurów</div>
+  <div class="bar"><button id="prev">‹</button><strong id="mon"></strong><button id="nxt">›</button></div>
+  <div class="grid" id="grid"></div>
+  <div class="hl" id="hols"></div>
+  <div class="legend" id="legend"></div>
+
+  <div class="card">
+    <h2>Przypomnienia</h2>
+    <label>Wieczorem dzień wcześniej o <input type="time" id="eve"></label>
+    <label>Budzik przed dyżurem dziennym (min) <input type="number" id="wd" min="0" max="600"></label>
+    <label>Budzik przed dyżurem nocnym (min) <input type="number" id="wn" min="0" max="600"></label>
+    <label>Dodatkowe przypomnienie przed startem (min) <input type="number" id="pre" min="0" max="1440"></label>
+    <label>Dźwięk alarmu <input type="checkbox" id="snd"></label>
+    <button class="btn p" id="perm" style="width:100%;margin-top:6px">Włącz powiadomienia</button>
+    <button class="btn" id="test" style="width:100%;margin-top:8px">Testuj alarm</button>
+    <small>0 = wyłączone. Przykład: dyżur dzienny od 7:30 i budzik 90 min = pobudka o 6:00.</small>
+    <small>Alarm dzwoni, gdy aplikacja jest otwarta. Żeby budziło też przy zamkniętej aplikacji, kliknij „Eksport do kalendarza” – telefon zadzwoni sam.</small>
+  </div>
+
+  <div class="card">
+    <h2>Godziny startu dyżurów</h2>
+    <div id="times"></div>
+    <button id="ics" style="display:none"></button><small>W aplikacji na Androidzie przypomnienia i budzik ustawiają się w systemie, więc dzwonią także przy zamkniętej aplikacji.</small>
+  </div>
+</div>
+
+<div class="sheet" id="sheet"><div>
+  <strong id="sd"></strong>
+  <div class="opts" id="opts"></div>
+  <button class="btn" id="clr" style="width:100%">Usuń dyżur</button>
+  <button class="btn" id="cls" style="width:100%;margin-top:8px">Zamknij</button>
+</div></div>
+
+<div class="alarm" id="alarm"><h2 id="at"></h2><p id="am"></p><button id="stop">Wyłącz alarm</button><button id="snz" style="margin-top:12px;background:transparent;color:#fff;border:2px solid #fff">Drzemka 5 min</button></div>
+
+<script>
+var TYPES={
+ d12:{n:'12h dzień',ic:'☀️',s:'07:30',h:12,c:'--day',t:'12h'},
+ n12:{n:'12h noc',ic:'🌙',s:'19:30',h:12,c:'--night',t:'12h',dk:1},
+ d8:{n:'8h dzień',ic:'☀️',s:'07:30',h:8,c:'--day',t:'8h'},
+ d4:{n:'4h dzień',ic:'☀️',s:'07:30',h:4,c:'--day',t:'4h'}
+};
+var S={shifts:{},eve:'18:00',pre:0,wd:90,wn:0,snd:true,starts:{},fired:{}};
+try{var r=localStorage.getItem('dyzury');if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
+Object.keys(S.shifts).forEach(function(k){if(!TYPES[S.shifts[k]])delete S.shifts[k]});
+function save(){try{localStorage.setItem('dyzury',JSON.stringify(S))}catch(e){}try{sched()}catch(e){}}
+function wakeMin(t){return TYPES[t].dk?(+S.wn||0):(+S.wd||0)}
+function hm(d){return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+function startOf(t){return S.starts[t]||TYPES[t].s}
+function key(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function shiftStart(k,t){var p=k.split('-'),h=startOf(t).split(':');return new Date(+p[0],+p[1]-1,+p[2],+h[0],+h[1])}
+function $(i){return document.getElementById(i)}
+function css(c){return getComputedStyle(document.documentElement).getPropertyValue(c)}
+function easter(y){var a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=(h+l-7*m+114)%31+1;return new Date(y,mo-1,da)}
+var HC={};
+function holidays(y){
+  if(HC[y])return HC[y];var H={};
+  [['01-01','Nowy Rok'],['01-06','Trzech Króli'],['05-01','Święto Pracy'],['05-03','Święto Konstytucji 3 Maja'],['08-15','Wniebowzięcie NMP'],['11-01','Wszystkich Świętych'],['11-11','Święto Niepodległości'],['12-24','Wigilia'],['12-25','Boże Narodzenie'],['12-26','Drugi dzień świąt']].forEach(function(x){H[y+'-'+x[0]]=x[1]});
+  var e=easter(y),add=function(n,nm){var d=new Date(e.getFullYear(),e.getMonth(),e.getDate()+n);H[key(d)]=nm};
+  add(0,'Wielkanoc');add(1,'Poniedziałek Wielkanocny');add(49,'Zielone Świątki');add(60,'Boże Ciało');
+  return HC[y]=H;
+}
+function hol(k){return holidays(+k.slice(0,4))[k]}
+var cur=new Date();cur.setDate(1);var sel=null;
+
+function render(){
+  var y=cur.getFullYear(),m=cur.getMonth();
+  $('mon').textContent=cur.toLocaleDateString('pl-PL',{month:'long',year:'numeric'});
+  var g=$('grid');g.innerHTML='';
+  ['Pn','Wt','Śr','Cz','Pt','So','Nd'].forEach(function(x){var e=document.createElement('div');e.className='dow';e.textContent=x;g.appendChild(e)});
+  var first=new Date(y,m,1),off=(first.getDay()+6)%7,tk=key(new Date());
+  for(var i=-off;i<42-off;i++){
+    var d=new Date(y,m,1+i);if(i>=new Date(y,m+1,0).getDate()&&d.getDay()===1)break;
+    var k=key(d),b=document.createElement('button');
+    b.className='day'+(d.getMonth()!==m?' out':'')+(k===tk?' today':'')+(hol(k)?' hol':'');
+    b.innerHTML='<span>'+d.getDate()+'</span>';
+    var t=S.shifts[k];
+    if(t){var s=document.createElement('span');s.className='tag';s.style.background='var('+TYPES[t].c+')';if(TYPES[t].dk)s.style.color='#2b2100';s.textContent=TYPES[t].ic+' '+TYPES[t].t;b.appendChild(s)}else{b.appendChild(document.createElement('span'))}
+    b.onclick=(function(k,d){return function(){openSheet(k,d)}})(k,d);
+    g.appendChild(b);
+  }
+  var hs=[];var H=holidays(y);Object.keys(H).sort().forEach(function(k){if(+k.slice(5,7)===m+1)hs.push('<b>'+(+k.slice(8))+'</b> – '+H[k])});
+  $('hols').innerHTML=hs.length?'Święta: '+hs.join(' &nbsp;·&nbsp; '):'W tym miesiącu brak świąt.';
+  var nx=nextShift();
+  $('next').innerHTML=nx?'<b>Najbliższy dyżur: '+TYPES[nx.t].n+'</b>'+nx.d.toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long'})+', start '+startOf(nx.t)+' ('+rel(nx.d)+')'+(wakeMin(nx.t)>0?'<br>⏰ Pobudka o '+hm(new Date(nx.d-wakeMin(nx.t)*60000)):''):'Brak zaplanowanych dyżurów. Kliknij dzień w kalendarzu.';
+}
+function rel(d){var mn=Math.round((d-new Date())/60000);if(mn<60)return 'za '+mn+' min';var h=Math.floor(mn/60);if(h<48)return 'za '+h+' godz.';return 'za '+Math.round(h/24)+' dni'}
+function nextShift(){var n=new Date(),best=null;Object.keys(S.shifts).forEach(function(k){var d=shiftStart(k,S.shifts[k]);if(d>n&&(!best||d<best.d))best={d:d,t:S.shifts[k]}});return best}
+
+function openSheet(k,d){
+  sel=k;$('sd').textContent=d.toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long'})+(hol(k)?' – '+hol(k):'');
+  var o=$('opts');o.innerHTML='';
+  Object.keys(TYPES).forEach(function(t){var b=document.createElement('button');b.style.background='var('+TYPES[t].c+')';if(TYPES[t].dk)b.style.color='#2b2100';b.textContent=TYPES[t].ic+' '+TYPES[t].n;b.onclick=function(){S.shifts[sel]=t;save();$('sheet').classList.remove('on');render()};o.appendChild(b)});
+  $('sheet').classList.add('on');
+}
+$('clr').onclick=function(){delete S.shifts[sel];save();$('sheet').classList.remove('on');render()};
+$('cls').onclick=function(){$('sheet').classList.remove('on')};
+$('prev').onclick=function(){cur.setMonth(cur.getMonth()-1);render()};
+$('nxt').onclick=function(){cur.setMonth(cur.getMonth()+1);render()};
+
+// legenda + godziny
+Object.keys(TYPES).forEach(function(t){
+  var l=document.createElement('span');l.innerHTML=TYPES[t].ic+' '+TYPES[t].n;$('legend').appendChild(l);
+  if(t==='d4'){var l2=document.createElement('span');l2.innerHTML='<i style="background:var(--hol)"></i>święto';$('legend').appendChild(l2)}
+  var lb=document.createElement('label');lb.innerHTML='<span>'+TYPES[t].n+' ('+TYPES[t].h+' h)</span>';
+  var inp=document.createElement('input');inp.type='time';inp.value=startOf(t);
+  inp.onchange=function(){S.starts[t]=inp.value||TYPES[t].s;save();render()};
+  lb.appendChild(inp);$('times').appendChild(lb);
+});
+$('eve').value=S.eve;$('pre').value=S.pre;$('wd').value=S.wd;$('wn').value=S.wn;$('snd').checked=S.snd;
+$('eve').onchange=function(){S.eve=$('eve').value||'18:00';save()};
+$('wd').onchange=function(){S.wd=Math.max(0,+$('wd').value||0);save();render()};
+$('wn').onchange=function(){S.wn=Math.max(0,+$('wn').value||0);save();render()};
+$('pre').onchange=function(){S.pre=Math.max(0,+$('pre').value||0);save()};
+$('snd').onchange=function(){S.snd=$('snd').checked;save()};
+var permWeb=function(){if(!('Notification' in window)){alert('Ta przeglądarka nie obsługuje powiadomień.');return}Notification.requestPermission().then(function(p){alert(p==='granted'?'Powiadomienia włączone.':'Powiadomienia zablokowane w ustawieniach przeglądarki.')})};
+
+// alarm
+var actx=null,beepT=null;
+function beep(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();var o=actx.createOscillator(),g=actx.createGain();o.type='square';o.frequency.value=880;g.gain.value=.25;o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+.35)}catch(e){}}
+function ring(title,msg){last=[title,msg];
+  $('at').textContent=title;$('am').textContent=msg;$('alarm').classList.add('on');
+  if(S.snd){beep();clearInterval(beepT);beepT=setInterval(beep,900)}
+  if(navigator.vibrate)navigator.vibrate([500,300,500,300,500]);
+  try{if('Notification' in window&&Notification.permission==='granted')new Notification(title,{body:msg})}catch(e){}
+}
+$('stop').onclick=function(){clearInterval(beepT);$('alarm').classList.remove('on');if(navigator.vibrate)navigator.vibrate(0)};
+var last=['',''];
+$('snz').onclick=function(){$('stop').onclick();var l=last;setTimeout(function(){ring(l[0],l[1])},5*60000)};
+var testWeb=function(){actx=actx||new (window.AudioContext||window.webkitAudioContext)();ring('Test alarmu','Tak będzie brzmiało przypomnienie o dyżurze.')};
+
+function check(){
+  var n=new Date();
+  Object.keys(S.shifts).forEach(function(k){
+    var t=S.shifts[k],st=shiftStart(k,t);
+    var p=k.split('-'),eh=S.eve.split(':');
+    var eve=new Date(+p[0],+p[1]-1,+p[2]-1,+eh[0],+eh[1]);
+    var pre=new Date(st-S.pre*60000);
+    [[eve,'e','Jutro dyżur: '+TYPES[t].n,'Start jutro o '+startOf(t)+(wakeMin(t)>0?', pobudka o '+hm(new Date(st-wakeMin(t)*60000)):'')],S.pre>0?[pre,'p','Dyżur: '+TYPES[t].n,'Start o '+startOf(t)+' ('+rel(st)+')']:null,wakeMin(t)>0?[new Date(st-wakeMin(t)*60000),'w','⏰ Pobudka! Dyżur '+TYPES[t].n,'Start o '+startOf(t)]:null].filter(Boolean).forEach(function(a){
+      var id=k+a[1]+t;
+      if(n>=a[0]&&n<new Date(a[0].getTime()+15*60000)&&!S.fired[id]){S.fired[id]=1;save();ring(a[2],a[3])}
+    });
+  });
+}
+setInterval(function(){check();render()},30000);check();
+
+// eksport ICS
+function ics(){
+  var z=function(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0')+'00'};
+  var L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Dyzury//PL','CALSCALE:GREGORIAN'];
+  Object.keys(S.shifts).sort().forEach(function(k){
+    var t=S.shifts[k],st=shiftStart(k,t),en=new Date(st.getTime()+TYPES[t].h*3600000);
+    var p=k.split('-'),eh=S.eve.split(':');
+    var eve=new Date(+p[0],+p[1]-1,+p[2]-1,+eh[0],+eh[1]);
+    var mEve=Math.round((st-eve)/60000);
+    L.push('BEGIN:VEVENT','UID:'+k+'-'+t+'@dyzury','DTSTAMP:'+z(new Date())+'Z','DTSTART:'+z(st),'DTEND:'+z(en),'SUMMARY:Dyżur '+TYPES[t].n,
+      'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Jutro dyżur '+TYPES[t].n,'TRIGGER:-PT'+mEve+'M','END:VALARM',
+      (S.pre>0?'BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Dyżur za chwilę\r\nTRIGGER:-PT'+S.pre+'M\r\nEND:VALARM':''),
+      (wakeMin(t)>0?'BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Pobudka! Dyżur o '+startOf(t)+'\r\nTRIGGER:-PT'+wakeMin(t)+'M\r\nEND:VALARM':''),'END:VEVENT');
+  });
+  L.push('END:VCALENDAR');return L.filter(Boolean).join('\r\n');
+}
+$('ics').onclick=function(){
+  if(!Object.keys(S.shifts).length){alert('Najpierw dodaj dyżury w kalendarzu.');return}
+  var b=new Blob([ics()],{type:'text/calendar'}),a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download='dyzury.ics';document.body.appendChild(a);a.click();a.remove();
+};
+
+// ===== Android: natywne powiadomienia (Capacitor) =====
+function LNp(){return (window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()&&Capacitor.Plugins&&Capacitor.Plugins.LocalNotifications)||null}
+var schT=null;
+function sched(){clearTimeout(schT);schT=setTimeout(doSched,800)}
+async function doSched(){
+  var LN=LNp();if(!LN)return;
+  try{
+    var pend=await LN.getPending();
+    if(pend.notifications.length)await LN.cancel({notifications:pend.notifications.map(function(x){return{id:x.id}})});
+    try{await LN.createChannel({id:'dyzury',name:'Dyżury i budzik',importance:5,visibility:1,vibration:true})}catch(e){}
+    var now=new Date(),lim=new Date(now.getTime()+45*864e5),list=[],id=1;
+    var add=function(at,title,body){if(at>now&&at<lim&&id<450){list.push({id:id++,title:title,body:body,channelId:'dyzury',schedule:{at:at,allowWhileIdle:true}})}};
+    Object.keys(S.shifts).sort().forEach(function(k){
+      var t=S.shifts[k],st=shiftStart(k,t),p=k.split('-'),eh=S.eve.split(':');
+      var eve=new Date(+p[0],+p[1]-1,+p[2]-1,+eh[0],+eh[1]),wm=wakeMin(t);
+      add(eve,'Jutro dyżur: '+TYPES[t].n,'Start jutro o '+startOf(t)+(wm>0?', pobudka o '+hm(new Date(st-wm*60000)):''));
+      if(S.pre>0)add(new Date(st-S.pre*60000),'Dyżur: '+TYPES[t].n,'Start o '+startOf(t));
+      if(wm>0){for(var i=0;i<4;i++)add(new Date(st-wm*60000+i*120000),'⏰ Pobudka! Dyżur '+TYPES[t].n,'Start o '+startOf(t));}
+    });
+    if(list.length)await LN.schedule({notifications:list});
+  }catch(e){console.log('sched',e)}
+}
+$('perm').onclick=async function(){
+  var LN=LNp();
+  if(!LN){permWeb();return}
+  try{
+    var r=await LN.requestPermissions();
+    var ex=await LN.checkExactNotificationSetting();
+    if(ex.exact_alarm==='denied'){alert('Na następnym ekranie włącz „Alarmy i przypomnienia” dla tej aplikacji.');await LN.changeExactNotificationSetting()}
+    alert(r.display==='granted'?'Powiadomienia włączone.':'Powiadomienia są zablokowane. Włącz je w Ustawienia > Aplikacje > Dyżury > Powiadomienia.');
+    sched();
+  }catch(e){alert('Błąd: '+e)}
+};
+$('test').onclick=async function(){
+  testWeb();
+  var LN=LNp();if(!LN)return;
+  try{await LN.createChannel({id:'dyzury',name:'Dyżury i budzik',importance:5,visibility:1,vibration:true})}catch(e){}
+  try{await LN.schedule({notifications:[{id:9999,title:'Test budzika',body:'Tak zadzwoni pobudka przy zamkniętej aplikacji.',channelId:'dyzury',schedule:{at:new Date(Date.now()+10000),allowWhileIdle:true}}]});alert('Zamknij aplikację. Powiadomienie przyjdzie za 10 sekund.')}catch(e){alert('Błąd: '+e)}
+};
+sched();
+render();
+</script>
+</body>
+</html>
