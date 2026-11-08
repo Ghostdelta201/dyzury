@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
+<script src="native-sound.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dyżury</title>
@@ -39,16 +40,53 @@ input[type=time],input[type=number]{border:1px solid var(--ln);background:var(--
 .alarm.on{display:flex}.alarm h2{font-size:30px;margin:0 0 8px}.alarm p{font-size:19px;margin:0 0 24px}
 .alarm button{background:#fff;color:#b3261e;border:0;border-radius:14px;padding:16px 40px;font-size:18px;font-weight:700}
 small{color:var(--mut);display:block;margin-top:8px;line-height:1.4}
+
+:root{--vac:#2e9e6b;--satbg:#fdeedb;--sunbg:#fbe1e1}
+@media(prefers-color-scheme:dark){:root{--satbg:#3a2c1a;--sunbg:#3d2124}}
+.day.sat{background:var(--satbg)}.day.sun,.day.hol{background:var(--sunbg)}
+.day.sat>span:first-child{color:#c26a00;font-weight:700}
+.day.sun>span:first-child{color:var(--hol);font-weight:700}
+.day.has>span:first-child{color:inherit!important}
+.tag{color:inherit;background:none;font-size:10px}
+.nav{display:flex;gap:4px;margin-bottom:10px}.nav button{flex:1;border:1px solid var(--ln);background:var(--card);color:var(--tx);border-radius:10px;padding:9px 2px;font-size:13px;font-weight:600}
+.nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.tab{display:none}.tab.on{display:block}
+.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--ln);font-size:15px}
+.row:last-child{border:0}
+.pb{height:10px;background:var(--ln);border-radius:6px;overflow:hidden;margin:10px 0}.pb i{display:block;height:100%;background:var(--day)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Dyżury</h1>
+  <nav class="nav"><button class="on" data-t="kal">Kalendarz</button><button data-t="god">Godziny</button><button data-t="url">Urlopy</button><button data-t="ust">Ustawienia</button></nav>
+  <div class="tab on" id="t-kal">
   <div class="next" id="next">Brak zaplanowanych dyżurów</div>
   <div class="bar"><button id="prev">‹</button><strong id="mon"></strong><button id="nxt">›</button></div>
   <div class="grid" id="grid"></div>
   <div class="hl" id="hols"></div>
   <div class="legend" id="legend"></div>
+  </div>
+  <div class="tab" id="t-god">
+    <div class="bar"><button id="prev2">‹</button><strong id="mon2"></strong><button id="nxt2">›</button></div>
+    <div class="card" id="hsum"></div>
+    <div class="card"><h2>Dyżury w tym miesiącu</h2><div id="hlist"></div></div>
+  </div>
+  <div class="tab" id="t-url">
+    <div class="card" id="vsum"></div>
+    <div class="card"><h2>Dni urlopu</h2><div id="vlist"></div>
+    <small>Urlop dodasz w kalendarzu: kliknij dzień i wybierz „Urlop”. Rok zmienisz strzałkami miesiąca w kalendarzu.</small></div>
+  </div>
+  <div class="tab" id="t-ust">
+  <div class="card"><h2>Urlop i norma godzin</h2>
+    <label>Pula urlopu na rok (godz.) <input type="number" id="vlim" min="0"></label>
+    <label>Godziny za 1 dzień urlopu <input type="number" id="vh" min="0"></label>
+    <label>Norma dzienna do wymiaru (godz.) <input type="number" id="nd" min="0"></label>
+    <small>Np. 26 dni urlopu = 208 godz. przy 8 h na dzień. Wymiar miesiąca = norma × dni robocze, pomniejszona o święta.</small></div>
+  <div class="card"><h2>Własny dźwięk alarmu</h2>
+    <input type="file" id="sndf" accept="audio/*" style="width:100%">
+    <button class="btn" id="sndx" style="width:100%;margin-top:8px">Usuń własny dźwięk</button>
+    <small>Plik gra, gdy aplikacja jest otwarta (do ok. 2 MB). Dźwięk powiadomień przy zamkniętej aplikacji ustawia się w budowie aplikacji (plik alarm.mp3).</small></div>
 
   <div class="card">
     <h2>Przypomnienia</h2>
@@ -68,6 +106,7 @@ small{color:var(--mut);display:block;margin-top:8px;line-height:1.4}
     <div id="times"></div>
     <button id="ics" style="display:none"></button><small>W aplikacji na Androidzie przypomnienia i budzik ustawiają się w systemie, więc dzwonią także przy zamkniętej aplikacji.</small>
   </div>
+  </div>
 </div>
 
 <div class="sheet" id="sheet"><div>
@@ -86,7 +125,7 @@ var TYPES={
  d8:{n:'8h dzień',ic:'☀️',s:'07:30',h:8,c:'--day',t:'8h'},
  d4:{n:'4h dzień',ic:'☀️',s:'07:30',h:4,c:'--day',t:'4h'}
 };
-var S={shifts:{},eve:'18:00',pre:0,wd:90,wn:0,snd:true,starts:{},fired:{}};
+var S={shifts:{},vac:{},vh:8,vlim:208,nd:8,eve:'18:00',pre:0,wd:90,wn:0,snd:true,starts:{},fired:{}};
 try{var r=localStorage.getItem('dyzury');if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
 Object.keys(S.shifts).forEach(function(k){if(!TYPES[S.shifts[k]])delete S.shifts[k]});
 function save(){try{localStorage.setItem('dyzury',JSON.stringify(S))}catch(e){}try{sched()}catch(e){}}
@@ -109,7 +148,7 @@ function holidays(y){
 function hol(k){return holidays(+k.slice(0,4))[k]}
 var cur=new Date();cur.setDate(1);var sel=null;
 
-function render(){
+function renderCal(){
   var y=cur.getFullYear(),m=cur.getMonth();
   $('mon').textContent=cur.toLocaleDateString('pl-PL',{month:'long',year:'numeric'});
   var g=$('grid');g.innerHTML='';
@@ -118,10 +157,13 @@ function render(){
   for(var i=-off;i<42-off;i++){
     var d=new Date(y,m,1+i);if(i>=new Date(y,m+1,0).getDate()&&d.getDay()===1)break;
     var k=key(d),b=document.createElement('button');
-    b.className='day'+(d.getMonth()!==m?' out':'')+(k===tk?' today':'')+(hol(k)?' hol':'');
+    b.className='day'+(d.getMonth()!==m?' out':'')+(k===tk?' today':'')+(hol(k)?' hol':'')+(d.getDay()===6?' sat':'')+(d.getDay()===0?' sun':'');
     b.innerHTML='<span>'+d.getDate()+'</span>';
     var t=S.shifts[k];
-    if(t){var s=document.createElement('span');s.className='tag';s.style.background='var('+TYPES[t].c+')';if(TYPES[t].dk)s.style.color='#2b2100';s.textContent=TYPES[t].ic+' '+TYPES[t].t;b.appendChild(s)}else{b.appendChild(document.createElement('span'))}
+    var s=document.createElement('span');s.className='tag';
+    if(S.vac[k]){fill(b,'var(--vac)','#fff');s.textContent='🏖️ urlop'}
+    else if(t){fill(b,'var('+TYPES[t].c+')',TYPES[t].dk?'#2b2100':'#fff');s.textContent=TYPES[t].ic+' '+TYPES[t].t}
+    b.appendChild(s);
     b.onclick=(function(k,d){return function(){openSheet(k,d)}})(k,d);
     g.appendChild(b);
   }
@@ -136,18 +178,20 @@ function nextShift(){var n=new Date(),best=null;Object.keys(S.shifts).forEach(fu
 function openSheet(k,d){
   sel=k;$('sd').textContent=d.toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long'})+(hol(k)?' – '+hol(k):'');
   var o=$('opts');o.innerHTML='';
-  Object.keys(TYPES).forEach(function(t){var b=document.createElement('button');b.style.background='var('+TYPES[t].c+')';if(TYPES[t].dk)b.style.color='#2b2100';b.textContent=TYPES[t].ic+' '+TYPES[t].n;b.onclick=function(){S.shifts[sel]=t;save();$('sheet').classList.remove('on');render()};o.appendChild(b)});
+  Object.keys(TYPES).forEach(function(t){var b=document.createElement('button');b.style.background='var('+TYPES[t].c+')';if(TYPES[t].dk)b.style.color='#2b2100';b.textContent=TYPES[t].ic+' '+TYPES[t].n;b.onclick=function(){S.shifts[sel]=t;delete S.vac[sel];save();$('sheet').classList.remove('on');render()};o.appendChild(b)});
+  var vb=document.createElement('button');vb.style.background='var(--vac)';vb.style.gridColumn='1/3';vb.textContent='🏖️ Urlop';
+  vb.onclick=function(){S.vac[sel]=1;delete S.shifts[sel];save();$('sheet').classList.remove('on');render()};o.appendChild(vb);
   $('sheet').classList.add('on');
 }
-$('clr').onclick=function(){delete S.shifts[sel];save();$('sheet').classList.remove('on');render()};
+$('clr').onclick=function(){delete S.shifts[sel];delete S.vac[sel];save();$('sheet').classList.remove('on');render()};
 $('cls').onclick=function(){$('sheet').classList.remove('on')};
 $('prev').onclick=function(){cur.setMonth(cur.getMonth()-1);render()};
 $('nxt').onclick=function(){cur.setMonth(cur.getMonth()+1);render()};
 
 // legenda + godziny
 Object.keys(TYPES).forEach(function(t){
-  var l=document.createElement('span');l.innerHTML=TYPES[t].ic+' '+TYPES[t].n;$('legend').appendChild(l);
-  if(t==='d4'){var l2=document.createElement('span');l2.innerHTML='<i style="background:var(--hol)"></i>święto';$('legend').appendChild(l2)}
+  var l=document.createElement('span');l.innerHTML='<i style="background:var('+TYPES[t].c+')"></i>'+TYPES[t].ic+' '+TYPES[t].n;$('legend').appendChild(l);
+  if(t==='d4'){var l2=document.createElement('span');l2.innerHTML='<i style="background:var(--vac)"></i>urlop &nbsp;<i style="background:#c26a00"></i>sobota &nbsp;<i style="background:var(--hol)"></i>niedziela / święto';$('legend').appendChild(l2)}
   var lb=document.createElement('label');lb.innerHTML='<span>'+TYPES[t].n+' ('+TYPES[t].h+' h)</span>';
   var inp=document.createElement('input');inp.type='time';inp.value=startOf(t);
   inp.onchange=function(){S.starts[t]=inp.value||TYPES[t].s;save();render()};
@@ -166,11 +210,11 @@ var actx=null,beepT=null;
 function beep(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();var o=actx.createOscillator(),g=actx.createGain();o.type='square';o.frequency.value=880;g.gain.value=.25;o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+.35)}catch(e){}}
 function ring(title,msg){last=[title,msg];
   $('at').textContent=title;$('am').textContent=msg;$('alarm').classList.add('on');
-  if(S.snd){beep();clearInterval(beepT);beepT=setInterval(beep,900)}
+  if(S.snd){if(userSnd){try{au=new Audio(userSnd);au.loop=true;au.play()}catch(e){}}else{beep();clearInterval(beepT);beepT=setInterval(beep,900)}}
   if(navigator.vibrate)navigator.vibrate([500,300,500,300,500]);
   try{if('Notification' in window&&Notification.permission==='granted')new Notification(title,{body:msg})}catch(e){}
 }
-$('stop').onclick=function(){clearInterval(beepT);$('alarm').classList.remove('on');if(navigator.vibrate)navigator.vibrate(0)};
+$('stop').onclick=function(){clearInterval(beepT);if(au){au.pause();au=null}$('alarm').classList.remove('on');if(navigator.vibrate)navigator.vibrate(0)};
 var last=['',''];
 $('snz').onclick=function(){$('stop').onclick();var l=last;setTimeout(function(){ring(l[0],l[1])},5*60000)};
 var testWeb=function(){actx=actx||new (window.AudioContext||window.webkitAudioContext)();ring('Test alarmu','Tak będzie brzmiało przypomnienie o dyżurze.')};
@@ -212,6 +256,52 @@ $('ics').onclick=function(){
   a.href=URL.createObjectURL(b);a.download='dyzury.ics';document.body.appendChild(a);a.click();a.remove();
 };
 
+// ===== godziny, urlopy, zakładki =====
+var au=null,userSnd=null;try{userSnd=localStorage.getItem('dyzury_snd')}catch(e){}
+function chOpts(){var o={id:'dyzury'+(window.NATIVE_SOUND?'_s':''),name:'Dyżury i budzik',importance:5,visibility:1,vibration:true};if(window.NATIVE_SOUND)o.sound=window.NATIVE_SOUND;return o}
+function fill(b,bg,c){b.style.background=bg;b.style.color=c;b.style.borderColor=bg;b.classList.add('has')}
+function fh(n){return (Math.round(n*10)/10).toString().replace('.',',')+' h'}
+var DN=['nd','pn','wt','śr','cz','pt','so'];
+function monthStats(y,m){
+  var w=0,vd=0;
+  Object.keys(S.shifts).forEach(function(k){var p=k.split('-');if(+p[0]===y&&+p[1]===m+1)w+=TYPES[S.shifts[k]].h});
+  Object.keys(S.vac).forEach(function(k){var p=k.split('-');if(+p[0]===y&&+p[1]===m+1)vd++});
+  var norm=0,H=holidays(y),n=new Date(y,m+1,0).getDate();
+  for(var d=1;d<=n;d++){var dt=new Date(y,m,d),wd=dt.getDay();if(wd>=1&&wd<=5)norm+=S.nd;if(wd!==0&&H[key(dt)])norm-=S.nd}
+  return{worked:w,vd:vd,vh:vd*S.vh,norm:norm};
+}
+function renderHours(){
+  var y=cur.getFullYear(),m=cur.getMonth(),st=monthStats(y,m),done=st.worked+st.vh,diff=st.norm-done;
+  $('mon2').textContent=$('mon').textContent;
+  var pct=st.norm>0?Math.min(100,Math.round(done/st.norm*100)):100;
+  $('hsum').innerHTML='<div class="row"><span>Wymiar czasu pracy</span><b>'+fh(st.norm)+'</b></div>'+
+   '<div class="row"><span>Przepracowane (dyżury)</span><b>'+fh(st.worked)+'</b></div>'+
+   '<div class="row"><span>Urlop ('+st.vd+' dni)</span><b>'+fh(st.vh)+'</b></div>'+
+   '<div class="row"><span>Razem</span><b>'+fh(done)+'</b></div><div class="pb"><i style="width:'+pct+'%"></i></div>'+
+   '<div class="row"><span>'+(diff>0?'Do przepracowania':'Nadwyżka')+'</span><b>'+fh(Math.abs(diff))+'</b></div>';
+  var L=[];Object.keys(S.shifts).sort().forEach(function(k){var p=k.split('-');if(+p[0]===y&&+p[1]===m+1){var t=S.shifts[k];L.push('<div class="row"><span>'+(+p[2])+'.'+p[1]+' '+DN[new Date(+p[0],+p[1]-1,+p[2]).getDay()]+' &nbsp;'+TYPES[t].ic+' '+TYPES[t].n+'</span><b>'+TYPES[t].h+' h</b></div>')}});
+  $('hlist').innerHTML=L.length?L.join(''):'<small>Brak dyżurów. Dodaj je w kalendarzu.</small>';
+}
+function renderVac(){
+  var y=cur.getFullYear(),ks=Object.keys(S.vac).filter(function(k){return +k.slice(0,4)===y}).sort();
+  var used=ks.length*S.vh,left=S.vlim-used,days=S.vh>0?Math.floor(left/S.vh):0;
+  $('vsum').innerHTML='<h2>Urlop '+y+'</h2><div class="row"><span>Pula na rok</span><b>'+fh(S.vlim)+'</b></div>'+
+   '<div class="row"><span>Wykorzystane ('+ks.length+' dni)</span><b>'+fh(used)+'</b></div>'+
+   '<div class="pb"><i style="width:'+(S.vlim>0?Math.min(100,Math.round(used/S.vlim*100)):100)+'%;background:var(--vac)"></i></div>'+
+   '<div class="row"><span>'+(left>=0?'Pozostało':'Przekroczono o')+'</span><b style="color:'+(left<0?'var(--hol)':'inherit')+'">'+fh(Math.abs(left))+(left>=0?' (ok. '+days+' dni)':'')+'</b></div>';
+  $('vlist').innerHTML=ks.length?ks.map(function(k){var p=k.split('-');return '<div class="row"><span>'+(+p[2])+'.'+p[1]+'.'+p[0]+' '+DN[new Date(+p[0],+p[1]-1,+p[2]).getDay()]+'</span><button class="btn" data-k="'+k+'">Usuń</button></div>'}).join(''):'<small>Brak urlopów w tym roku.</small>';
+  $('vlist').querySelectorAll('button').forEach(function(b){b.onclick=function(){delete S.vac[b.dataset.k];save();render()}});
+}
+function render(){renderCal();renderHours();renderVac()}
+document.querySelectorAll('.nav button').forEach(function(b){b.onclick=function(){
+  document.querySelectorAll('.nav button').forEach(function(x){x.classList.toggle('on',x===b)});
+  document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('on',x.id==='t-'+b.dataset.t)});render()}});
+$('prev2').onclick=$('prev').onclick;$('nxt2').onclick=$('nxt').onclick;
+[['vlim'],['vh'],['nd']].forEach(function(a){var e=$(a[0]);e.value=S[a[0]];e.onchange=function(){S[a[0]]=Math.max(0,+e.value||0);save();render()}});
+$('sndf').onchange=function(){var f=this.files[0];if(!f)return;if(f.size>2200000){alert('Plik jest za duży (max ok. 2 MB).');return}
+  var r=new FileReader();r.onload=function(){try{localStorage.setItem('dyzury_snd',r.result);userSnd=r.result;alert('Zapisano własny dźwięk. Sprawdź go przyciskiem „Testuj alarm”.')}catch(e){alert('Nie udało się zapisać pliku (za duży).')}};r.readAsDataURL(f)};
+$('sndx').onclick=function(){try{localStorage.removeItem('dyzury_snd')}catch(e){}userSnd=null;alert('Usunięto własny dźwięk.')};
+
 // ===== Android: natywne powiadomienia (Capacitor) =====
 function LNp(){return (window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()&&Capacitor.Plugins&&Capacitor.Plugins.LocalNotifications)||null}
 var schT=null;
@@ -221,9 +311,9 @@ async function doSched(){
   try{
     var pend=await LN.getPending();
     if(pend.notifications.length)await LN.cancel({notifications:pend.notifications.map(function(x){return{id:x.id}})});
-    try{await LN.createChannel({id:'dyzury',name:'Dyżury i budzik',importance:5,visibility:1,vibration:true})}catch(e){}
+    try{await LN.createChannel(chOpts())}catch(e){}
     var now=new Date(),lim=new Date(now.getTime()+45*864e5),list=[],id=1;
-    var add=function(at,title,body){if(at>now&&at<lim&&id<450){list.push({id:id++,title:title,body:body,channelId:'dyzury',schedule:{at:at,allowWhileIdle:true}})}};
+    var add=function(at,title,body){if(at>now&&at<lim&&id<450){list.push({id:id++,title:title,body:body,channelId:chOpts().id,schedule:{at:at,allowWhileIdle:true}})}};
     Object.keys(S.shifts).sort().forEach(function(k){
       var t=S.shifts[k],st=shiftStart(k,t),p=k.split('-'),eh=S.eve.split(':');
       var eve=new Date(+p[0],+p[1]-1,+p[2]-1,+eh[0],+eh[1]),wm=wakeMin(t);
@@ -248,8 +338,8 @@ $('perm').onclick=async function(){
 $('test').onclick=async function(){
   testWeb();
   var LN=LNp();if(!LN)return;
-  try{await LN.createChannel({id:'dyzury',name:'Dyżury i budzik',importance:5,visibility:1,vibration:true})}catch(e){}
-  try{await LN.schedule({notifications:[{id:9999,title:'Test budzika',body:'Tak zadzwoni pobudka przy zamkniętej aplikacji.',channelId:'dyzury',schedule:{at:new Date(Date.now()+10000),allowWhileIdle:true}}]});alert('Zamknij aplikację. Powiadomienie przyjdzie za 10 sekund.')}catch(e){alert('Błąd: '+e)}
+  try{await LN.createChannel(chOpts())}catch(e){}
+  try{await LN.schedule({notifications:[{id:9999,title:'Test budzika',body:'Tak zadzwoni pobudka przy zamkniętej aplikacji.',channelId:chOpts().id,schedule:{at:new Date(Date.now()+10000),allowWhileIdle:true}}]});alert('Zamknij aplikację. Powiadomienie przyjdzie za 10 sekund.')}catch(e){alert('Błąd: '+e)}
 };
 sched();
 render();
